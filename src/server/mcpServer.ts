@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
-import { Transport } from "@modelcontextprotocol/sdk/shared/transport";
-import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_PORT } from "../config";
 import { UapfEngineClient } from "../client/UapfEngineClient";
 import { buildToolsForPackages } from "../tools/buildTools";
@@ -76,17 +76,17 @@ async function main() {
 
   const server = new McpServer({ name: "uapf-mcp", version: "0.1.0" });
 
-  for (const tool of tools) {
-    server.registerTool(
-      tool.name,
-      {
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-        outputSchema: tool.outputSchema,
-      },
-      async (args) => tool.handler(args)
-    );
-  }
+    for (const tool of tools) {
+      (server.registerTool as any)(
+        tool.name,
+        {
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          outputSchema: tool.outputSchema,
+        },
+        async (args: any) => tool.handler(args)
+      );
+    }
 
   const transport = new WebSocketServerTransport(MCP_PORT);
   await server.connect(transport);

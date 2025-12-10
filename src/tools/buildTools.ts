@@ -1,13 +1,12 @@
-import { z } from "zod";
-import { AnySchema } from "@modelcontextprotocol/sdk/server/zod-compat";
+import { z, ZodTypeAny } from "zod";
 import { EnginePackageInfo } from "../types/engine";
 import { UapfEngineClient } from "../client/UapfEngineClient";
 
 export interface BuiltToolDefinition {
   name: string;
   description: string;
-  inputSchema: AnySchema;
-  outputSchema: AnySchema;
+  inputSchema: ZodTypeAny;
+  outputSchema: ZodTypeAny;
   handler: (args: any) => Promise<any> | any;
 }
 
@@ -24,11 +23,9 @@ export function buildToolsForPackages(
   for (const pkg of packages) {
     const slug = slugifyPackageId(pkg.packageId);
 
-    tools.push({
-      name: `uapf_${slug}_describe_service`,
-      description: `Describe the UAPF package ${pkg.packageId} (version ${pkg.version}).`,
-      inputSchema: z.object({}),
-      outputSchema: z.object({
+    const describeServiceInputSchema = z.object({});
+    const describeServiceOutputSchema = z
+      .object({
         packageId: z.string(),
         version: z.string(),
         name: z.string().optional(),
@@ -47,7 +44,14 @@ export function buildToolsForPackages(
             label: z.string().optional(),
           })
         ),
-      }),
+      })
+      .passthrough();
+
+    tools.push({
+      name: `uapf_${slug}_describe_service`,
+      description: `Describe the UAPF package ${pkg.packageId} (version ${pkg.version}).`,
+      inputSchema: describeServiceInputSchema,
+      outputSchema: describeServiceOutputSchema,
       handler: async () => ({
         packageId: pkg.packageId,
         version: pkg.version,
@@ -58,21 +62,28 @@ export function buildToolsForPackages(
       }),
     });
 
-    tools.push({
-      name: `uapf_${slug}_run_process`,
-      description: `Execute a process from UAPF package ${pkg.packageId} once using uapf-engine.`,
-      inputSchema: z.object({
+    const runProcessInputSchema = z
+      .object({
         processId: z
           .string()
           .describe("Process id as defined in the UAPF manifest for this package."),
         input: z.unknown().describe("Structured JSON input expected by the process."),
-      }),
-      outputSchema: z.object({
+      })
+      .passthrough();
+    const runProcessOutputSchema = z
+      .object({
         applicationId: z.string().optional(),
         status: z.string(),
         outputs: z.unknown(),
         explanations: z.array(z.unknown()).optional(),
-      }),
+      })
+      .passthrough();
+
+    tools.push({
+      name: `uapf_${slug}_run_process`,
+      description: `Execute a process from UAPF package ${pkg.packageId} once using uapf-engine.`,
+      inputSchema: runProcessInputSchema,
+      outputSchema: runProcessOutputSchema,
       handler: async (args) => {
         const { processId, input } = args;
 
@@ -84,19 +95,26 @@ export function buildToolsForPackages(
       },
     });
 
-    tools.push({
-      name: `uapf_${slug}_evaluate_decision`,
-      description: `Evaluate a DMN decision from UAPF package ${pkg.packageId} using uapf-engine.`,
-      inputSchema: z.object({
+    const evaluateDecisionInputSchema = z
+      .object({
         decisionId: z
           .string()
           .describe("Decision id as defined in the UAPF manifest for this package."),
         input: z.unknown().describe("Structured JSON input expected by the decision."),
-      }),
-      outputSchema: z.object({
+      })
+      .passthrough();
+    const evaluateDecisionOutputSchema = z
+      .object({
         outputs: z.unknown(),
         explanations: z.array(z.unknown()).optional(),
-      }),
+      })
+      .passthrough();
+
+    tools.push({
+      name: `uapf_${slug}_evaluate_decision`,
+      description: `Evaluate a DMN decision from UAPF package ${pkg.packageId} using uapf-engine.`,
+      inputSchema: evaluateDecisionInputSchema,
+      outputSchema: evaluateDecisionOutputSchema,
       handler: async (args) => {
         const { decisionId, input } = args;
 
