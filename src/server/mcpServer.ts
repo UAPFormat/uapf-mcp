@@ -1,7 +1,7 @@
 import { WebSocketServer, WebSocket } from "ws";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
-import { Transport } from "@modelcontextprotocol/sdk/shared/transport";
-import { JSONRPCMessage } from "@modelcontextprotocol/sdk/types";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_PORT } from "../config";
 import { UapfEngineClient } from "../client/UapfEngineClient";
 import { buildToolsForPackages } from "../tools/buildTools";
