@@ -3,11 +3,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 export const MCP_PORT = Number(process.env.MCP_PORT || 7900);
+export const MCP_HTTP_PATH = process.env.MCP_HTTP_PATH || "/mcp";
+export const MCP_CORS_ORIGIN = process.env.MCP_CORS_ORIGIN || "*";
 
 export type McpMode = "package" | "workspace" | "auto";
 export type EngineMode = "packages" | "workspace" | "auto";
 export type SecurityMode = "off" | "claims_declare" | "claims_enforce";
 export type VerifierKind = "none" | "http";
+export type McpTransport = "streamable_http" | "sse" | "ws" | "stdio";
 
 export const UAPF_MCP_MODE: McpMode =
   (process.env.UAPF_MCP_MODE as McpMode) || "auto";
@@ -30,3 +33,6 @@ export const UAPF_SECURITY_MODE: SecurityMode =
 export const UAPF_DIDVC_VERIFIER: VerifierKind =
   (process.env.UAPF_DIDVC_VERIFIER as VerifierKind) || "none";
 export const UAPF_DIDVC_VERIFIER_URL = process.env.UAPF_DIDVC_VERIFIER_URL;
+
+export const MCP_TRANSPORT: McpTransport =
+  (process.env.MCP_TRANSPORT as McpTransport) || "streamable_http";

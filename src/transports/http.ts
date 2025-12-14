@@ -1,0 +1,61 @@
+import http from "node:http";
+import { randomUUID } from "node:crypto";
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+
+export async function serveStreamableHttp(
+  server: McpServer,
+  port: number,
+  path = "/mcp",
+  corsOrigin = "*",
+) {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+  });
+
+  const httpServer = http.createServer(async (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+    res.setHeader("Access-Control-Allow-Headers", "content-type, authorization, mcp-session-id");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS,DELETE");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (!req.url?.startsWith(path)) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
+
+    if (req.method === "GET" && (req.url === path || req.url === `${path}/`)) {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("uapf-mcp: streamable HTTP transport ready");
+      return;
+    }
+
+    try {
+      await transport.handleRequest(req, res);
+    } catch (err) {
+      console.error("[mcp] streamable http error", err);
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "text/plain" });
+      }
+      if (!res.writableEnded) {
+        res.end("Internal server error");
+      }
+    }
+  });
+
+  await server.connect(transport);
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once("listening", () => resolve());
+    httpServer.once("error", (err) => reject(err));
+    httpServer.listen(port);
+  });
+
+  console.log(`[mcp] streamable http listening on http://0.0.0.0:${port}${path}`);
+}

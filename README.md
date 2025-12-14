@@ -37,6 +37,9 @@ When running in workspace mode:
 ```env
 # MCP server
 MCP_PORT=7900
+MCP_TRANSPORT=streamable_http   # streamable_http | sse | ws | stdio
+MCP_HTTP_PATH=/mcp
+MCP_CORS_ORIGIN=*
 UAPF_MCP_NAME=uapf
 UAPF_MCP_TOOL_PREFIX=uapf
 
@@ -58,6 +61,8 @@ UAPF_DIDVC_VERIFIER_URL=            # required when verifier=http
 Notes:
 - `UAPF_ENGINE_URL` defaults to `http://localhost:3001`.
 - `UAPF_SECURITY_MODE=claims_enforce` requires a verifier (see below).
+- WebSocket mode is still available at `ws://<host>:MCP_PORT/mcp-ws` when
+  `MCP_TRANSPORT=ws`.
 
 ---
 
@@ -158,7 +163,9 @@ node scripts/smoke.mjs
 ```
 
 The script calls `/_/meta`, lists packages, fetches the first manifest, and runs
-validation against the first package.
+validation against the first package. When `MCP_TRANSPORT=streamable_http`, it
+also connects to the MCP server over HTTP to run `listTools`, `uapf.describe`,
+and `uapf.list`.
 
 ---
 
