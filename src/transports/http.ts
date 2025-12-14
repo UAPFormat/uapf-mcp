@@ -37,6 +37,21 @@ export async function serveStreamableHttp(
       return;
     }
 
+    const acceptsSse = req.headers.accept?.includes("text/event-stream");
+
+    if (req.method === "GET" && !acceptsSse) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+
+    if (req.method === "POST") {
+      const acceptHeader = req.headers.accept ?? "";
+      if (!acceptHeader.includes("application/json") || !acceptHeader.includes("text/event-stream")) {
+        req.headers.accept = "application/json, text/event-stream";
+      }
+    }
+
     try {
       await transport.handleRequest(req, res);
     } catch (err) {
