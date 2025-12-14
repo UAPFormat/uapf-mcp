@@ -19,6 +19,8 @@ export async function serveStreamableHttp(
     res.setHeader("Access-Control-Allow-Headers", "content-type, authorization, mcp-session-id");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS,DELETE");
 
+    const accept = String(req.headers.accept ?? "");
+
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
@@ -37,32 +39,38 @@ export async function serveStreamableHttp(
       return;
     }
 
-    const acceptsSse = req.headers.accept?.includes("text/event-stream");
+    const handleTransportRequest = async () => {
+      try {
+        await transport.handleRequest(req, res);
+      } catch (err) {
+        console.error("[mcp] streamable http error", err);
+        if (!res.headersSent) {
+          res.writeHead(500, { "content-type": "text/plain" });
+        }
+        if (!res.writableEnded) {
+          res.end("Internal server error");
+        }
+      }
+    };
 
-    if (req.method === "GET" && !acceptsSse) {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ status: "ok" }));
+    if (req.method === "POST") {
+      await handleTransportRequest();
       return;
     }
 
-    if (req.method === "POST") {
-      const acceptHeader = req.headers.accept ?? "";
-      if (!acceptHeader.includes("application/json") || !acceptHeader.includes("text/event-stream")) {
-        req.headers.accept = "application/json, text/event-stream";
+    if (req.method === "GET") {
+      if (accept.includes("text/event-stream")) {
+        await handleTransportRequest();
+        return;
       }
+
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", transport: "streamable_http" }));
+      return;
     }
 
-    try {
-      await transport.handleRequest(req, res);
-    } catch (err) {
-      console.error("[mcp] streamable http error", err);
-      if (!res.headersSent) {
-        res.writeHead(500, { "content-type": "text/plain" });
-      }
-      if (!res.writableEnded) {
-        res.end("Internal server error");
-      }
-    }
+    res.writeHead(405);
+    res.end();
   });
 
   await server.connect(transport);
