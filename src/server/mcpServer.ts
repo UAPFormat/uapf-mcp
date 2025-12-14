@@ -1,9 +1,13 @@
 import { WebSocketServer, WebSocket } from "ws";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
 import {
   MCP_PORT,
+  MCP_CORS_ORIGIN,
+  MCP_HTTP_PATH,
+  MCP_TRANSPORT,
   UAPF_ENGINE_MODE,
   UAPF_ENGINE_URL,
   UAPF_MCP_MODE,
@@ -20,6 +24,7 @@ import { registerTools } from "../mcp/registerTools";
 import { registerResources } from "../mcp/resources";
 import { NoneVerifier, HttpVerifier } from "../security/verifier";
 import { EngineMeta, EnginePackage } from "../types/engine";
+import { serveStreamableHttp } from "../transports/http";
 
 class WebSocketServerTransport implements Transport {
   private wss: WebSocketServer;
@@ -30,8 +35,8 @@ class WebSocketServerTransport implements Transport {
   sessionId?: string;
   setProtocolVersion?: (version: string) => void;
 
-  constructor(private port: number) {
-    this.wss = new WebSocketServer({ port: this.port });
+  constructor(private port: number, private path = "/mcp-ws") {
+    this.wss = new WebSocketServer({ port: this.port, path: this.path });
   }
 
   async start(): Promise<void> {
@@ -128,6 +133,18 @@ function getVerifier() {
   return new NoneVerifier();
 }
 
+async function serveWebsocket(server: McpServer, port: number, path = "/mcp-ws") {
+  const transport = new WebSocketServerTransport(port, path);
+  await server.connect(transport);
+  console.log(`${UAPF_MCP_NAME} listening on ws://0.0.0.0:${port}${path}`);
+}
+
+async function serveStdio(server: McpServer) {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.log(`${UAPF_MCP_NAME} listening on stdio transport`);
+}
+
 async function main() {
   const client = new EngineClient();
   let meta: EngineMeta | undefined;
@@ -167,9 +184,25 @@ async function main() {
 
   registerResources(server, client, scopedPackages, UAPF_SECURITY_MODE, verifier);
 
-  const transport = new WebSocketServerTransport(MCP_PORT);
-  await server.connect(transport);
-  console.log(`${UAPF_MCP_NAME} listening on WebSocket port ${MCP_PORT}`);
+  switch (MCP_TRANSPORT) {
+    case "streamable_http": {
+      await serveStreamableHttp(server, MCP_PORT, MCP_HTTP_PATH, MCP_CORS_ORIGIN);
+      break;
+    }
+    case "ws": {
+      await serveWebsocket(server, MCP_PORT);
+      break;
+    }
+    case "stdio": {
+      await serveStdio(server);
+      break;
+    }
+    case "sse": {
+      throw new Error("SSE transport is not implemented. Use streamable_http or ws.");
+    }
+    default:
+      throw new Error(`Unknown MCP_TRANSPORT=${MCP_TRANSPORT}`);
+  }
 }
 
 main().catch((err) => {
