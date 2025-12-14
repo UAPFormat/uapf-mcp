@@ -2,9 +2,24 @@ import { WebSocketServer, WebSocket } from "ws";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type { JSONRPCMessage } from "@modelcontextprotocol/sdk/types.js";
-import { MCP_PORT } from "../config";
-import { UapfEngineClient } from "../client/UapfEngineClient";
-import { buildToolsForPackages } from "../tools/buildTools";
+import {
+  MCP_PORT,
+  UAPF_ENGINE_MODE,
+  UAPF_ENGINE_URL,
+  UAPF_MCP_MODE,
+  UAPF_MCP_NAME,
+  UAPF_MCP_TOOL_PREFIX,
+  UAPF_PACKAGE_PATH,
+  UAPF_SECURITY_MODE,
+  UAPF_WORKSPACE_DIR,
+  UAPF_DIDVC_VERIFIER,
+  UAPF_DIDVC_VERIFIER_URL,
+} from "../config";
+import { EngineClient, EngineClientError } from "../engine/engineClient";
+import { registerTools } from "../mcp/registerTools";
+import { registerResources } from "../mcp/resources";
+import { NoneVerifier, HttpVerifier } from "../security/verifier";
+import { EngineMeta, EnginePackage } from "../types/engine";
 
 class WebSocketServerTransport implements Transport {
   private wss: WebSocketServer;
@@ -69,28 +84,92 @@ class WebSocketServerTransport implements Transport {
   }
 }
 
-async function main() {
-  const client = new UapfEngineClient();
-  const packages = await client.listPackages();
-  const tools = buildToolsForPackages(packages, client);
-
-  const server = new McpServer({ name: "uapf-mcp", version: "0.1.0" });
-
-    for (const tool of tools) {
-      (server.registerTool as any)(
-        tool.name,
-        {
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-          outputSchema: tool.outputSchema,
-        },
-        async (args: any) => tool.handler(args)
-      );
+function resolveMcpMode(meta?: EngineMeta): "package" | "workspace" {
+  if (UAPF_MCP_MODE === "package") {
+    if (!UAPF_PACKAGE_PATH) {
+      throw new Error("UAPF_MCP_MODE=package requires UAPF_PACKAGE_PATH");
     }
+    return "package";
+  }
+  if (UAPF_MCP_MODE === "workspace") {
+    if (!UAPF_WORKSPACE_DIR) {
+      throw new Error("UAPF_MCP_MODE=workspace requires UAPF_WORKSPACE_DIR");
+    }
+    return "workspace";
+  }
+
+  if (UAPF_WORKSPACE_DIR) return "workspace";
+  if (UAPF_PACKAGE_PATH) return "package";
+  if (meta?.mode === "workspace") return "workspace";
+  return "package";
+}
+
+function resolveEngineMode(meta?: EngineMeta): "packages" | "workspace" {
+  if (UAPF_ENGINE_MODE !== "auto") return UAPF_ENGINE_MODE;
+  if (meta?.mode === "workspace") return "workspace";
+  if (meta?.mode === "packages") return "packages";
+  return "packages";
+}
+
+function pickPackagesForMode(mode: "package" | "workspace", packages: EnginePackage[]) {
+  if (mode === "package" && packages.length > 0) {
+    return [packages[0]];
+  }
+  return packages;
+}
+
+function getVerifier() {
+  if (UAPF_DIDVC_VERIFIER === "http") {
+    if (!UAPF_DIDVC_VERIFIER_URL) {
+      throw new Error("UAPF_DIDVC_VERIFIER_URL is required when UAPF_DIDVC_VERIFIER=http");
+    }
+    return new HttpVerifier(UAPF_DIDVC_VERIFIER_URL);
+  }
+  return new NoneVerifier();
+}
+
+async function main() {
+  const client = new EngineClient();
+  let meta: EngineMeta | undefined;
+  try {
+    meta = await client.getMeta();
+  } catch (err) {
+    if (err instanceof EngineClientError) {
+      console.warn("Failed to fetch engine meta:", err.message);
+    } else {
+      console.warn("Failed to fetch engine meta:", (err as Error)?.message);
+    }
+  }
+
+  const mode = resolveMcpMode(meta);
+  const engineMode = resolveEngineMode(meta);
+  const packages = await client.listPackages();
+  const scopedPackages = pickPackagesForMode(mode, packages);
+
+  if (scopedPackages.length === 0) {
+    throw new Error("No UAPF packages available from engine");
+  }
+
+  const server = new McpServer({ name: UAPF_MCP_NAME, version: "0.1.0" });
+  const verifier = getVerifier();
+
+  registerTools({
+    server,
+    client,
+    packages: scopedPackages,
+    mode,
+    engineMode,
+    engineUrl: UAPF_ENGINE_URL,
+    toolPrefix: UAPF_MCP_TOOL_PREFIX,
+    securityMode: UAPF_SECURITY_MODE,
+    claimsVerifier: verifier,
+  });
+
+  registerResources(server, client, scopedPackages, UAPF_SECURITY_MODE, verifier);
 
   const transport = new WebSocketServerTransport(MCP_PORT);
   await server.connect(transport);
-  console.log(`uapf-mcp listening on WebSocket port ${MCP_PORT}`);
+  console.log(`${UAPF_MCP_NAME} listening on WebSocket port ${MCP_PORT}`);
 }
 
 main().catch((err) => {

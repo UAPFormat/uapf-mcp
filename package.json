@@ -12,6 +12,7 @@
     "@modelcontextprotocol/sdk": "^1.24.3",
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2",
     "ws": "^8.18.0",
     "zod": "^3.23.8"
   },

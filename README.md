@@ -3,52 +3,129 @@
 Reference **Model Context Protocol (MCP)** server for
 [UAPF](https://github.com/UAPFormat/UAPF-spec) packages.
 
-This service exposes UAPF packages as MCP tools by calling a running
-[uapf-engine](https://github.com/UAPFormat/uapf-engine) instance over HTTP.
-
-It is designed to be deployed behind `algomation.io` (WAMP + Apache) and consumed by
-MCP-capable AI agents, including Neksus agents and other MCP hosts.
+The server connects to a running [uapf-engine](https://github.com/UAPFormat/uapf-engine)
+instance and exposes canonical MCP tools and resources for working with UAPF
+packages in either **package** or **workspace** mode.
 
 > Status: Early draft – APIs and tool names may change before UAPF v1.0.
 
 ---
 
-## What it does
+## Modes: package vs workspace
 
-- Discovers available UAPF packages by calling `uapf-engine`:
-  - `GET /uapf/packages`
-- Dynamically registers MCP tools for each package:
-  - `uapf_{slug}_describe_service`
-  - `uapf_{slug}_run_process`
-  - `uapf_{slug}_evaluate_decision`
-- Forwards tool calls to `uapf-engine` via HTTP:
-  - `POST /uapf/execute-process`
-  - `POST /uapf/evaluate-decision`
+The MCP server can target either a single `.uapf` package or an entire workspace
+repository. Modes are derived from environment variables or engine metadata:
 
-The MCP server itself does **not** execute BPMN/DMN/CMMN; it delegates to `uapf-engine`.
+- `UAPF_MCP_MODE=package` – requires `UAPF_PACKAGE_PATH`.
+- `UAPF_MCP_MODE=workspace` – requires `UAPF_WORKSPACE_DIR`.
+- `UAPF_MCP_MODE=auto` (default) – prefers `UAPF_WORKSPACE_DIR`, then
+  `UAPF_PACKAGE_PATH`, otherwise falls back to the engine mode reported by
+  `/_/meta`.
+
+When running in package mode:
+- `uapf.list` always returns a singleton list.
+- Tool calls using a different `packageId` return `package_mode_mismatch`.
+
+When running in workspace mode:
+- `uapf.list` returns the engine workspace inventory.
+- `uapf.validate` without `packageId` validates the entire workspace.
 
 ---
 
 ## Configuration
 
-The server is configured via environment variables:
-
-- `MCP_PORT`  
-  WebSocket port for the MCP server.  
-  Default: `7900`.
-
-- `UAPF_ENGINE_BASE_URL`  
-  Base URL of the `uapf-engine` HTTP service.  
-  Examples:
-  - Local dev: `http://127.0.0.1:4000`
-  - Behind WAMP: `https://algomation.io/uapf-engine`
-
-Example `.env`:
-
 ```env
+# MCP server
 MCP_PORT=7900
-UAPF_ENGINE_BASE_URL=https://algomation.io/uapf-engine
+UAPF_MCP_NAME=uapf
+UAPF_MCP_TOOL_PREFIX=uapf
+
+# Engine connectivity
+UAPF_ENGINE_URL=http://localhost:3001
+UAPF_ENGINE_MODE=auto  # packages | workspace | auto
+
+# Mode selection
+UAPF_MCP_MODE=auto     # package | workspace | auto
+UAPF_PACKAGE_PATH=/path/to/package.uapf
+UAPF_WORKSPACE_DIR=/path/to/workspace/repo
+
+# Security
+UAPF_SECURITY_MODE=claims_declare   # off | claims_declare | claims_enforce
+UAPF_DIDVC_VERIFIER=none            # none | http
+UAPF_DIDVC_VERIFIER_URL=            # required when verifier=http
 ```
+
+Notes:
+- `UAPF_ENGINE_URL` defaults to `http://localhost:3001`.
+- `UAPF_SECURITY_MODE=claims_enforce` requires a verifier (see below).
+
+---
+
+## Canonical MCP tools
+
+Tools are always registered with their canonical names below. If
+`UAPF_MCP_TOOL_PREFIX` is set to a different prefix, prefixed aliases are also
+registered but the canonical names remain discoverable.
+
+- `uapf.describe`
+- `uapf.list`
+- `uapf.run_process`
+- `uapf.evaluate_decision`
+- `uapf.resolve_resources`
+- `uapf.get_artifact`
+- `uapf.validate`
+
+### Tool shapes
+
+- **uapf.describe** → `{ mode, engine: { url, mode }, capabilities, tooling }`
+- **uapf.list** (optional filters: `level`, `tag`, `domain`, `q`) → array of
+  package summaries
+- **uapf.run_process** `{ packageId, processId, input }` → engine result
+- **uapf.evaluate_decision** `{ packageId, decisionId, input }` → engine result
+- **uapf.resolve_resources** `{ packageId, processId?, taskId? }` → engine
+  bindings
+- **uapf.get_artifact** `{ packageId, kind, id? }`
+  - `kind=manifest` → JSON manifest
+  - otherwise → `{ mediaType, contentBase64 }`
+- **uapf.validate** `{ packageId? }` → `{ ok, issues[] }` (workspace or package)
+
+---
+
+## MCP resources
+
+The server publishes read-only MCP resources backed by uapf-engine:
+
+- `uapf://manifest/<packageId>`
+- `uapf://bpmn/<packageId>?id=<processId>`
+- `uapf://dmn/<packageId>?id=<decisionId>`
+- `uapf://cmmn/<packageId>?id=<caseId>`
+- `uapf://bindings/<packageId>?processId=...&taskId=...`
+- `uapf://policies/<packageId>`
+
+Resources are listed per package and served with the appropriate MIME type. BPMN,
+DMN, and other XML artifacts are returned as base64-encoded blobs; manifests and
+policies are returned as JSON text.
+
+---
+
+## Security modes and verifiers
+
+The server supports basic claims propagation:
+
+- `off` – no claim handling.
+- `claims_declare` (default) – required claims are included in tool/resource
+  responses but not enforced.
+- `claims_enforce` – verifies required claims and blocks calls when verification
+  fails.
+
+Verifiers implement `ClaimsVerifier` from `src/security/verifier.ts`:
+
+- `NoneVerifier` – always succeeds.
+- `HttpVerifier` – POSTs `{ requiredClaims, context }` to
+  `UAPF_DIDVC_VERIFIER_URL` and expects `{ ok, reason? }`.
+
+In enforcement mode, unmet claims return a structured error with
+`claims_not_satisfied`.
 
 ---
 
@@ -65,98 +142,29 @@ npm install
 ```bash
 npm run build
 npm run start
-# MCP server will listen on MCP_PORT (default 7900)
+# MCP server listens on MCP_PORT (default 7900)
 ```
 
-### For development
-
-```bash
-npm run dev
-```
+For development: `npm run dev`.
 
 ---
 
-## MCP tools
+## Smoke test
 
-For each UAPF package discovered from uapf-engine, the server registers:
+A simple local sanity check is provided at `scripts/smoke.mjs`:
 
-### `uapf_{slug}_describe_service`
-Describe the package and its entry points.
-
-**Input:**
-
-```json
-{}
+```bash
+node scripts/smoke.mjs
 ```
 
-**Output:**
+The script calls `/_/meta`, lists packages, fetches the first manifest, and runs
+validation against the first package.
 
-```json
-{
-  "packageId": "string",
-  "version": "string",
-  "name": "string",
-  "description": "string",
-  "processes": [
-    {
-      "id": "string",
-      "bpmnProcessId": "string",
-      "label": "string"
-    }
-  ],
-  "decisions": [
-    {
-      "id": "string",
-      "dmnDecisionId": "string",
-      "label": "string"
-    }
-  ]
-}
-```
+---
 
-### `uapf_{slug}_run_process`
-Execute a process from that package once.
+## Deployment tips
 
-**Input:**
-
-```json
-{
-  "processId": "string",
-  "input": { "any": "structured JSON expected by the process" }
-}
-```
-
-**Output:**
-
-```json
-{
-  "applicationId": "string (optional)",
-  "status": "string",
-  "outputs": {},
-  "explanations": ["..."]
-}
-```
-
-### `uapf_{slug}_evaluate_decision`
-Evaluate a DMN decision from that package.
-
-**Input:**
-
-```json
-{
-  "decisionId": "string",
-  "input": { "any": "structured JSON expected by the decision" }
-}
-```
-
-**Output:**
-
-```json
-{
-  "outputs": {},
-  "explanations": ["..."]
-}
-```
-
-The exact shapes of input and outputs depend on each package; in future versions,
-schemas from the UAPF manifest may be used to tighten these definitions.
+- Ensure `uapf-engine` is reachable at `UAPF_ENGINE_URL` and configured for the
+  desired mode (packages vs workspace).
+- Set the MCP mode env vars to match the deployment target.
+- Configure security mode and verifier URL according to your DID/VC pipeline.
