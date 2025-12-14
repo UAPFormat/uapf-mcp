@@ -25,15 +25,15 @@ export async function serveStreamableHttp(
       return;
     }
 
-    if (!req.url?.startsWith(path)) {
-      res.writeHead(404);
-      res.end();
+    if (req.method === "GET" && req.url === "/health") {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
       return;
     }
 
-    if (req.method === "GET" && (req.url === path || req.url === `${path}/`)) {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("uapf-mcp: streamable HTTP transport ready");
+    if (!req.url?.startsWith(path)) {
+      res.writeHead(404);
+      res.end();
       return;
     }
 
