@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -26,6 +28,10 @@ export const UAPF_ENGINE_MODE: EngineMode =
 export const UAPF_MCP_NAME = process.env.UAPF_MCP_NAME || "uapf";
 export const UAPF_MCP_TOOL_PREFIX =
   process.env.UAPF_MCP_TOOL_PREFIX || "uapf";
+
+export const UAPF_DEBUG_LOG =
+  process.env.UAPF_DEBUG_LOG ||
+  path.join(process.cwd(), "logs", "uapf-engine-http-debug.log");
 
 export const UAPF_SECURITY_MODE: SecurityMode =
   (process.env.UAPF_SECURITY_MODE as SecurityMode) || "claims_declare";
