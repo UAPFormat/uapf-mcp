@@ -42,6 +42,7 @@ MCP_HTTP_PATH=/mcp
 MCP_CORS_ORIGIN=*
 UAPF_MCP_NAME=uapf
 UAPF_MCP_TOOL_PREFIX=uapf
+UAPF_DEBUG_LOG=logs/uapf-engine-http-debug.log
 
 # Engine connectivity
 UAPF_ENGINE_URL=http://localhost:3001
@@ -63,6 +64,9 @@ Notes:
 - `UAPF_SECURITY_MODE=claims_enforce` requires a verifier (see below).
 - WebSocket mode is still available at `ws://<host>:MCP_PORT/mcp-ws` when
   `MCP_TRANSPORT=ws`.
+- HTTP request/response debug output is written to
+  `logs/uapf-engine-http-debug.log` by default. Override with `UAPF_DEBUG_LOG`
+  to redirect the log file.
 
 ---
 
@@ -175,3 +179,7 @@ and `uapf.list`.
   desired mode (packages vs workspace).
 - Set the MCP mode env vars to match the deployment target.
 - Configure security mode and verifier URL according to your DID/VC pipeline.
+- Low-level HTTP debug logs for engine requests live at the path in
+  `UAPF_DEBUG_LOG` (default `logs/uapf-engine-http-debug.log`). The file is
+  created automatically and records each request/response with headers and
+  payload summaries.
