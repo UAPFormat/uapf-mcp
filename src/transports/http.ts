@@ -5,18 +5,19 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 export async function serveStreamableHttp(
-  server: McpServer,
+  createServer: () => Promise<McpServer> | McpServer,
   port: number,
   path = "/mcp",
   corsOrigin = "*",
 ) {
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => randomUUID(),
-  });
+  const sessions = new Map<string, { server: McpServer; transport: StreamableHTTPServerTransport }>();
 
   const httpServer = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", corsOrigin);
-    res.setHeader("Access-Control-Allow-Headers", "content-type, authorization, mcp-session-id");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "content-type, authorization, mcp-session-id, accept",
+    );
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS,DELETE");
 
     const accept = String(req.headers.accept ?? "");
@@ -39,9 +40,29 @@ export async function serveStreamableHttp(
       return;
     }
 
+    let sid = String(req.headers["mcp-session-id"] ?? "").trim();
+
+    if (!sid) {
+      sid = randomUUID();
+      res.setHeader("Mcp-Session-Id", sid);
+      req.headers["mcp-session-id"] = sid;
+    }
+
+    let entry = sessions.get(sid);
+
+    if (!entry) {
+      const server = await createServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => sid,
+      });
+      await server.connect(transport);
+      entry = { server, transport };
+      sessions.set(sid, entry);
+    }
+
     const handleTransportRequest = async () => {
       try {
-        await transport.handleRequest(req, res);
+        await entry?.transport.handleRequest(req, res);
       } catch (err) {
         console.error("[mcp] streamable http error", err);
         if (!res.headersSent) {
@@ -73,7 +94,6 @@ export async function serveStreamableHttp(
     res.end();
   });
 
-  await server.connect(transport);
   await new Promise<void>((resolve, reject) => {
     httpServer.once("listening", () => resolve());
     httpServer.once("error", (err) => reject(err));
