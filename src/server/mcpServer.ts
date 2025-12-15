@@ -167,33 +167,38 @@ async function main() {
     throw new Error("No UAPF packages available from engine");
   }
 
-  const server = new McpServer({ name: UAPF_MCP_NAME, version: "0.1.0" });
-  const verifier = getVerifier();
+  const createMcpServer = async () => {
+    const server = new McpServer({ name: UAPF_MCP_NAME, version: "0.1.0" });
+    const verifier = getVerifier();
 
-  registerTools({
-    server,
-    client,
-    packages: scopedPackages,
-    mode,
-    engineMode,
-    engineUrl: UAPF_ENGINE_URL,
-    toolPrefix: UAPF_MCP_TOOL_PREFIX,
-    securityMode: UAPF_SECURITY_MODE,
-    claimsVerifier: verifier,
-  });
+    registerTools({
+      server,
+      client,
+      packages: scopedPackages,
+      mode,
+      engineMode,
+      engineUrl: UAPF_ENGINE_URL,
+      toolPrefix: UAPF_MCP_TOOL_PREFIX,
+      securityMode: UAPF_SECURITY_MODE,
+      claimsVerifier: verifier,
+    });
 
-  registerResources(server, client, scopedPackages, UAPF_SECURITY_MODE, verifier);
+    registerResources(server, client, scopedPackages, UAPF_SECURITY_MODE, verifier);
+    return server;
+  };
 
   switch (MCP_TRANSPORT) {
     case "streamable_http": {
-      await serveStreamableHttp(server, MCP_PORT, MCP_HTTP_PATH, MCP_CORS_ORIGIN);
+      await serveStreamableHttp(createMcpServer, MCP_PORT, MCP_HTTP_PATH, MCP_CORS_ORIGIN);
       break;
     }
     case "ws": {
+      const server = await createMcpServer();
       await serveWebsocket(server, MCP_PORT);
       break;
     }
     case "stdio": {
+      const server = await createMcpServer();
       await serveStdio(server);
       break;
     }
