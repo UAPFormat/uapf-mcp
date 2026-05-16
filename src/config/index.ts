@@ -25,6 +25,12 @@ export const UAPF_ENGINE_URL =
 export const UAPF_ENGINE_MODE: EngineMode =
   (process.env.UAPF_ENGINE_MODE as EngineMode) || "auto";
 
+// UAPF-IP: the host whose capabilities a started process runs against.
+// uapf.run_process fetches this host's /uapf/host/manifest and passes it to
+// the engine's start-session call. Without it, run_process cannot execute a
+// process (start-session requires a host manifest).
+export const UAPF_HOST_MANIFEST_URL = process.env.UAPF_HOST_MANIFEST_URL;
+
 export const UAPF_MCP_NAME = process.env.UAPF_MCP_NAME || "uapf";
 export const UAPF_MCP_TOOL_PREFIX =
   process.env.UAPF_MCP_TOOL_PREFIX || "uapf";

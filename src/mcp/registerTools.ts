@@ -209,8 +209,27 @@ export function registerTools(options: RegisterToolsOptions) {
       const requiredClaims = process?.requiredClaims || pkg?.requiredClaims;
       const context = { tool: "run_process", packageId, processId };
       const result = await enforceClaims(requiredClaims, securityMode, claimsVerifier, context);
-      const engineResult = await client.runProcess({ packageId, processId, input });
+      // UAPF-IP v0.1: a process executes inside a session against a host.
+      // Fetch the configured host's capability manifest, then start-session.
+      const hostManifest = await client.getHostManifest();
+      const engineResult = await client.startSession({
+        packageId,
+        processId,
+        input,
+        hostManifest,
+      });
       return attachClaims(engineResult, result.requiredClaims, securityMode);
+    }
+  );
+
+  registerWithAliases(
+    "uapf.inspect_session",
+    "Inspect a running or completed UAPF process session: state, output, and audit chain.",
+    z.object({ sessionId: z.string() }).passthrough(),
+    z.object({}).passthrough(),
+    async (args) => {
+      const { sessionId } = args;
+      return client.getSession(sessionId);
     }
   );
 

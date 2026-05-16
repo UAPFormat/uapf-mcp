@@ -4,15 +4,17 @@ import path from "node:path";
 import {
   UAPF_ENGINE_URL,
   UAPF_DEBUG_LOG,
+  UAPF_HOST_MANIFEST_URL,
 } from "../config";
 import {
   EngineArtifactResponse,
   EngineDecisionEvaluationRequest,
   EngineMeta,
   EnginePackage,
-  EngineProcessExecutionRequest,
   EngineResolveResourcesRequest,
+  EngineStartSessionRequest,
   EngineValidationRequest,
+  HostManifest,
 } from "../types/engine";
 
 const http = axios.create({
@@ -205,10 +207,43 @@ export class EngineClient {
     }
   }
 
-  async runProcess(body: EngineProcessExecutionRequest): Promise<any> {
+  // UAPF-IP v0.1: start a process session. Replaces the legacy stateless
+  // /uapf/execute-process call (which the current engine treats as a no-op).
+  async startSession(body: EngineStartSessionRequest): Promise<any> {
     try {
-      const res = await http.post("/uapf/execute-process", body);
+      const res = await http.post("/uapf/start-session", body);
       return res.data;
+    } catch (err) {
+      wrapError(err);
+    }
+  }
+
+  // UAPF-IP v0.1: inspect a session's state and audit chain.
+  async getSession(sessionId: string): Promise<any> {
+    try {
+      const res = await http.get(
+        `/uapf/sessions/${encodeURIComponent(sessionId)}`
+      );
+      return res.data;
+    } catch (err) {
+      wrapError(err);
+    }
+  }
+
+  // Fetch the configured host's UAPF-IP capability manifest. start-session
+  // requires a host manifest; the MCP server supplies it from configuration
+  // since an AI agent caller has no host of its own.
+  async getHostManifest(): Promise<HostManifest> {
+    if (!UAPF_HOST_MANIFEST_URL) {
+      throw new EngineClientError(
+        "host_not_configured",
+        "UAPF_HOST_MANIFEST_URL is not set — cannot run a process without a host. " +
+          "Set it to the host's /uapf/host/manifest URL."
+      );
+    }
+    try {
+      const res = await axios.get(UAPF_HOST_MANIFEST_URL, { timeout: 15000 });
+      return res.data as HostManifest;
     } catch (err) {
       wrapError(err);
     }

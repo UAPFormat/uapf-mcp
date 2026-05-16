@@ -34,10 +34,29 @@ export interface EngineArtifactResponse {
   headers: Record<string, unknown>;
 }
 
-export interface EngineProcessExecutionRequest {
+export interface HostCapability {
+  namespace: string;
+  operation: string;
+  version: number;
+}
+
+export interface HostManifest {
+  hostDid: string;
+  hostBaseUrl: string;
+  profiles: string[];
+  capabilities: HostCapability[];
+  manifestSignature?: string;
+}
+
+// UAPF-IP v0.1 start-session request (POST /uapf/start-session).
+// Replaces the legacy stateless EngineProcessExecutionRequest.
+export interface EngineStartSessionRequest {
   packageId: string;
+  packageVersion?: string;
   processId: string;
   input: any;
+  hostManifest: HostManifest;
+  guardrailsRef?: string;
 }
 
 export interface EngineDecisionEvaluationRequest {
